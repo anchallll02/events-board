@@ -38,7 +38,7 @@ export async function POST(request) {
   const startsAt = new Date(body.startsAt);
   const price = Number(body.price);
 
-  if (!title  !city  !description || !imageUrl) {
+  if (!title || !city || !description || !imageUrl) {
     return NextResponse.json({ error: "All fields are required" }, { status: 400 });
   }
   if (!CATEGORIES.includes(body.category)) {
@@ -47,7 +47,7 @@ export async function POST(request) {
   if (Number.isNaN(startsAt.getTime())) {
     return NextResponse.json({ error: "Enter a valid date and time" }, { status: 400 });
   }
-  if (body.price === ""  body.price == null  !Number.isFinite(price) || price < 0) {
+  if (body.price === "" || body.price == null || !Number.isFinite(price) || price < 0) {
     return NextResponse.json({ error: "Price must be 0 or more" }, { status: 400 });
   }
   if (!isValidUrl(imageUrl)) {

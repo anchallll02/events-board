@@ -5,7 +5,7 @@ import RemindButton from "@/components/RemindButton";
 export default function EventCard({ event, reminded, onRemind }) {
   return (
     <article className="flex flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-      <Link href={/events/${event._id}}>
+      <Link href={`/events/${event._id}`}>
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src={event.imageUrl}

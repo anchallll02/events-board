@@ -41,7 +41,7 @@ export function useReminders() {
 
     // 2) save in the background
     try {
-      const res = await fetch(/api/reminders/${eventId}, {
+      const res = await fetch(`/api/reminders/${eventId}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ remind: !wasOn }),
