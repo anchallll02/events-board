@@ -71,28 +71,28 @@ Normal users can sign up at `/signup`.
 | GET, POST | `/api/admin/events` | admin | list all events, create an event |
 | PATCH | `/api/admin/events/:id` | admin | set an event active or inactive |
 
-## What is left / not done
-
-- No automated tests. I tested each page and API by hand.
-- Reminders are only saved. No email or notification is actually sent.
-- Events use an image URL. There is no image upload.
-- The admin can add events and switch them on or off, but cannot edit or delete them.
-- Not deployed. It runs locally.
 
 ## Short answers
 
-### 1. How is the data structured in the database?
+### 1. Show your database structure. Why did you design it this way?
 
-Four collections:
+Four collections in MongoDB:
 
-- **events**: `title`, `category` (Music, Workshop, Food, Sports, Kids), `city`, `startsAt` (a Date, stored in UTC and shown in Asia/Kolkata), `price` (whole rupees, `0` means Free), `description`, `imageUrl`, `isActive`.
+- **events**: `title`, `category` (Music, Workshop, Food, Sports, Kids), `city`, `startsAt` (Date), `price` (whole rupees, `0` means Free), `description`, `imageUrl`, `isActive`.
 - **users**: `email` (unique), `passwordHash`, `favouriteCategories` (array of strings).
-- **reminders**: `userId`, `eventId`. One row per user and event, enforced by a unique index. Turning a reminder off deletes the row.
-- **carddesigns**: `userId`, `eventId`, `theme`, `stickers` (array, at most 3). One design per user per event, enforced by a unique index.
+- **reminders**: `userId`, `eventId`, with a unique index on the pair.
+- **carddesigns**: `userId`, `eventId`, `theme`, `stickers` (array, max 3), with a unique index on the pair.
 
-Price is stored as a whole number of rupees so there are no decimal rounding problems. Reminders and card designs are separate collections linked by ids, so an event document stays small.
+Why this design:
+- **Events are one flat document.** Every page reads an event as a whole, so there is nothing to join.
+- **Reminders and card designs are separate collections, not arrays inside the event.** An event can have many users, so an array on the event would grow without limit. Separate rows keep the event small, and one user's change never touches another user's data.
+- **The unique index on `userId + eventId`** means the database itself stops duplicates. Pressing "Remind me" twice or saving a design twice cannot create two rows, even if two requests arrive at the same time.
+- **Price is stored in whole rupees** (an integer), so there are no decimal rounding problems. `0` is shown as "Free".
+- **`startsAt` is a real Date** (stored in UTC, shown in Asia/Kolkata), so it can be compared and sorted correctly.
+- **Favourite categories live inside the user** because they are a short list that always belongs to that one user.
+- **`isActive` is a flag**, so the admin can hide an event without deleting it.
 
-### 2. What is the filter query and which index supports it?
+### 2. How does your filter query work, and what index would you add?
 
 Both the events page and My Feed use one function, `findUpcoming` in `lib/events.js`. It builds this filter:
 
@@ -106,23 +106,24 @@ Both the events page and My Feed use one function, `findUpcoming` in `lib/events
 }
 ```
 
-It sorts by `startsAt` ascending and uses `skip` and `limit` (6 per page).
+Only active events that have not started yet are returned. The chosen filters combine with AND. It sorts by `startsAt` ascending and uses `skip` and `limit` for pages of 6. My Feed uses the same function and only passes the user's favourite categories.
 
-The index in `models/Event.js` is:
+The index I added (in `models/Event.js`):
 
 ```js
 { isActive: 1, category: 1, city: 1, startsAt: 1 }
 ```
 
-The fields we match exactly (`isActive`, `category`, `city`) come first, and the range and sort field (`startsAt`) comes last. MongoDB can then jump straight to the matching events already in date order, without sorting them again. The text search is a case-insensitive regex on a small result set. A text index could be added later if the data grows a lot.
+The fields we match exactly (`isActive`, `category`, `city`) come first, and the range and sort field (`startsAt`) comes last. MongoDB can go straight to the matching events already in date order, so it does not scan every event or sort them again. The text search is a case-insensitive regex that runs on the already filtered events. If the data grows a lot, I would add a text index for search.
 
-### 3. How are passwords stored, and how are the admin pages and APIs protected?
+### 3. How do you store passwords and protect the admin pages and APIs?
 
-- **Passwords:** never stored as plain text. The server stores only a bcrypt hash (`passwordHash`) made with bcryptjs. At login, the typed password is compared with the hash.
-- **Login:** after a correct login the server creates a signed JWT (valid 7 days) and puts it in an httpOnly cookie, so JavaScript in the browser cannot read it. The server also accepts `Authorization: Bearer <token>`.
-- **Admin:** the admin email and password come from environment variables, not the database. The admin token carries `role: "admin"`.
-- **Protection:** every protected API starts with `requireRole(request, "admin")` or `requireRole(request, "user")`. No login gives 401. The wrong role gives 403. The `/admin` page also checks the cookie on the server and redirects to `/admin/login`. The real protection is in the API, because hiding a page in the UI does not stop someone calling the API directly.
-- **Secrets:** `.env.local` is not committed. `.env.example` has placeholders only.
+- **Passwords:** never stored as plain text. Only a bcrypt hash (`passwordHash`, made with bcryptjs) is saved. At login the typed password is compared with the hash.
+- **Login:** after a correct login the server creates a signed JWT (valid 7 days) and stores it in an httpOnly cookie, so JavaScript in the browser cannot read it. The server also accepts `Authorization: Bearer <token>`.
+- **Admin:** the admin email and password come from environment variables, not from the database or the code. The admin token carries `role: "admin"`.
+- **APIs:** every protected API starts with `requireRole(request, "admin")` or `requireRole(request, "user")`. No login gives 401. The wrong role gives 403. A normal user cannot call an admin API.
+- **Admin pages:** `/admin` checks the cookie on the server and redirects to `/admin/login` if the person is not an admin. The real protection is in the APIs, because hiding a page does not stop someone calling the API directly.
+- **Secrets:** `.env.local` is not committed to Git. `.env.example` has placeholders only.
 
 ## Use of AI
 
